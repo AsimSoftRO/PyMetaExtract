@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 from PIL import Image
 from PIL.ExifTags import TAGS
 from PyPDF2 import PdfReader
+import json
 
 RED = "\033[31m"
 GREEN= "\033[92m"
@@ -83,6 +84,13 @@ def download_file(file_url):
         print(f"{RED}[-] Error downloading{BLACK} {file_url}: {e}")
         return None
 
+def url_to_json_name(url):
+    parsed = urlparse(url)
+    domain = parsed.netloc
+    parts = domain.split('.')
+    name = parts[-2]
+    return name + ".json"
+
 def analyze_webpage(url):
     files = scan_webpage_for_files(url)
     if not files:
@@ -99,18 +107,24 @@ def analyze_webpage(url):
             else:
                 extract_image_metadata(local_file, report)
             os.remove(local_file)
-    print("\n=== Webpage Analysis Report ===")
+    save_report_json(report,url_to_json_name(url))
+    return report
 
+def save_report_json(report, filename="report.json"):
+    with open(filename, "w") as f:
+        json.dump(report, f, indent=4)
+    print(f"[+] Report saved as {GREEN}{filename}{BLACK}")
 
 def main_menu():
+    report = 0
     while True:
         print("\n=== PyMetaExtract ===")
         print("1. Analyze an Image")
         print("2. Analyze a PDF")
         print("3. Analyze a Webpage for Images and PDFs")
-        print("4. Exit")
+        print("4. Save Report File")
+        print("5. Exit")
         choice = input("Select an option: ").strip()
-
         if choice == "1":
             file_path = input("Enter the path to the image: ").strip()
             if os.path.isfile(file_path):
@@ -125,8 +139,13 @@ def main_menu():
                 print("[-] File does not exist!")
         elif choice == "3":
             url = input("Enter the URL of the webpage: ").strip()
-            analyze_webpage(url)
-        elif choice == "4":
+            report = analyze_webpage(url)
+        elif choice =="4":
+            if report == 0:
+                print(f"{RED}You don't have any report to save!{BLACK}")
+            else:
+                save_report_json(report, input("Insert filename for your output: ").strip())
+        elif choice == "5":
             print("Goodbye!")
             break
         else:
