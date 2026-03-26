@@ -71,6 +71,54 @@ def scan_webpage_for_files(url):
         print(f"[-] Error scanning URL: {e}")
         return []
 
+
+def scan_website_recursive(url, visited=None, depth=0, max_depth=2):
+    if visited is None:
+        visited = set()
+
+    files = []
+
+    if url in visited:
+        return files
+    if depth > max_depth:
+        return files
+
+    print(f"[+] Scanning: {url} (depth={depth})")
+    visited.add(url)
+
+    try:
+        response = requests.get(url, timeout=5)
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        base_domain = urlparse(url).netloc
+
+        for tag in soup.find_all(['a', 'img']):
+            link = tag.get('href') or tag.get('src')
+            if not link:
+                continue
+
+            full_url = urljoin(url, link)
+
+            if full_url.lower().endswith(('.pdf', '.jpg', '.jpeg', '.png', '.gif')):
+                files.append(full_url)
+
+            elif urlparse(full_url).netloc == base_domain:
+                files.extend(
+                    scan_website_recursive(
+                        full_url,
+                        visited,
+                        depth + 1,
+                        max_depth
+                    )
+                )
+
+    except Exception as e:
+        print(f"[-] Error scanning {url}: {e}")
+
+    return files
+
+
+
 def download_file(file_url):
     local_filename = os.path.basename(urlparse(file_url).path)
     try:
@@ -110,9 +158,31 @@ def analyze_webpage(url):
     save_report_json(report,url_to_json_name(url))
     return report
 
+def analyze_website(url, max_depth=2):
+    files = scan_website_recursive(url,None,0,max_depth)
+    if not files:
+        print("[-] No images or PDFs found on the website.")
+        return
+    
+    report = {}
+    for file_url in files:
+        print(f"\n[+] Processing file: {file_url}")
+        local_file = download_file(file_url)
+        if local_file:
+            if local_file.lower().endswith('.pdf'):
+                extract_pdf_metadata(local_file, report)
+            else:
+                extract_image_metadata(local_file, report)
+            os.remove(local_file)
+    save_report_json(report,url_to_json_name(url))
+    return report
+
 def save_report_json(report, filename="report.json"):
     with open(filename, "w") as f:
-        json.dump(report, f, indent=4)
+        try:
+            json.dump(report, f, indent=4)
+        except Exception as e:
+            print("Error")
     print(f"[+] Report saved as {GREEN}{filename}{BLACK}")
 
 def main_menu():
@@ -122,8 +192,9 @@ def main_menu():
         print("1. Analyze an Image")
         print("2. Analyze a PDF")
         print("3. Analyze a Webpage for Images and PDFs")
-        print("4. Save Report File")
-        print("5. Exit")
+        print("4. Analyze a website recursively")
+        print("5. Save Report File")
+        print("6. Exit")
         choice = input("Select an option: ").strip()
         if choice == "1":
             file_path = input("Enter the path to the image: ").strip()
@@ -140,12 +211,15 @@ def main_menu():
         elif choice == "3":
             url = input("Enter the URL of the webpage: ").strip()
             report = analyze_webpage(url)
-        elif choice =="4":
+        elif choice == "4":
+            url = input("Enter the URL of the webpage: ").strip()
+            analyze_website(url, int(input("Max depth:")))
+        elif choice =="5":
             if report == 0:
                 print(f"{RED}You don't have any report to save!{BLACK}")
             else:
                 save_report_json(report, input("Insert filename for your output: ").strip())
-        elif choice == "5":
+        elif choice == "6":
             print("Goodbye!")
             break
         else:
